@@ -1,0 +1,20 @@
+This tool is designed to gather useful information from compiled binary files.
+
+The default usage is:
+	strings.py [options] path_to_file
+
+Flags can be set to specify certain types of data.
+
+Options:
+	-o filename -- this option specifies a file to write the output to, instead of stdout. Unlike stdout, this option does not add tabs before strings.
+	-u -- parse URLs
+	-d -- parse DLLs
+	-i -- parse IP Addresses
+	-p -- parse File Paths
+	-k -- parse Registry Keys
+	-f -- parse Files
+	-h -- parse SHA1 hash
+	-v -- checks the SHA1sum value against VirusTotal's database and prints the report. If -o is selected this isformation is saved in a second file VirusTotalReport-filename.
+
+
+Make sure to create a file vtAPI.key with your API key on the first line to ensure it works properly.
