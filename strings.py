@@ -14,7 +14,7 @@ def help():
           "\n\t-k -- parse Registry Keys"
           "\n\t-f -- parse Files"
           "\n\t-h -- parse SHA1 hash"
-          "\n\t-v -- checks the SHA1sum value against VirusTotal's database and prints the report. If -o is selected this isformation is saved in a second file VirusTotalReport-filename."
+          "\n\t-v -- checks the SHA1sum value against VirusTotal's database and prints the report. If -o is selected this information is saved in a second file VirusTotalReport-filename."
           )
     sys.exit()
     
