@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-import sys, getopt, subprocess, re, pprint, json
+import sys, getopt, re, pprint, json, hashlib
 import vt
 
 def help():
@@ -13,16 +13,15 @@ def help():
           "\n\t-p -- parse File Paths"
           "\n\t-k -- parse Registry Keys"
           "\n\t-f -- parse Files"
-          "\n\t-h -- parse SHA1 hash"
-          "\n\t-v -- checks the SHA1sum value against VirusTotal's database and prints the report. If -o is selected this information is saved in a second file VirusTotalReport-filename."
+          "\n\t-h -- computes hash values"
+          "\n\t-v -- checks the SHA1sum value against VirusTotal's database and prints the report. If -o is selected this information is saved in a second file VirusTotalReport-filename. Automatically sets the -h option."
           )
     sys.exit()
     
-def stdout(SHA1sum, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
+def stdout(hashes, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
     
-    if SHA1sum:
-        print('\nSHA1 Hash:')
-        print("\t",SHA1sum,'\n')
+    if hashes:
+        print(f'\nMD5 Hash:\n\t{hashes[0]}\nSHA1 Hash:\n\t{hashes[1]}\nSHA256 Hash:\n\t{hashes[2]}\n')
     
     if DLLs:         
         print("DLLs Found:")
@@ -55,16 +54,20 @@ def stdout(SHA1sum, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
     
     if '-v' in opts:
         print("\nVirusTotal report:\n")
-        pprint.pprint(vt.VTreport(SHA1sum))
+        pprint.pprint(vt.VTreport(hashes[1]))
 
-def writeFile(SHA1sum, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
+def writeFile(hashes, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
     yn = input("Would you like to write uncategorized strings? (y/N) ")
     try:    
         with open(opts['-o'], 'w') as f:
             
-            if SHA1sum:
+            if hashes:
+                f.write('\nMD5 Hash:')
+                f.write("\n" + hashes[0] +'\n')
                 f.write('\nSHA1 Hash:')
-                f.write("\n" + SHA1sum +'\n')
+                f.write("\n" + hashes[1] +'\n')
+                f.write('\nSHA256 Hash:')
+                f.write("\n" + hashes[2] +'\n')
             
             if DLLs:         
                 f.write("\n\nDLLs Found:")
@@ -88,25 +91,27 @@ def writeFile(SHA1sum, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
                 
             if Files:
                 f.write("\n\nFiles Found:")
-                [f.write("\n" + f) for f in Files]
+                [f.write("\n" + fi) for fi in Files]
             
             if 'Y' in yn.upper():
                 f.write("\n\nUncategorized Strings:")
                 [f.write("\n" + u) for u in UNCAT]
                 
         if '-v' in opts:
+            print(f"Writing VirusTotalReport-{opts['-o']}...")
             with open(f"VirusTotalReport-{opts['-o']}", 'w') as v:
-                json.dump(vt.VTreport(SHA1sum), v)    
+                json.dump(vt.VTreport(hashes[1]), v)    
                 
     except Exception as e:
         print("Error writing to file.")
         print(e)
         sys.exit()
-           
+       
 def getOpts():
     opts, args = getopt.getopt(sys.argv[1:], "udipkfhvo:",['help'])
     opts = dict(opts)
     optionsSelected = []
+        
     for o in opts:
         optionsSelected.append(o[1])
 
@@ -126,6 +131,9 @@ def getOpts():
         opts['-k'] = ''
         opts['-f'] = ''
         opts['-h'] = ''
+   
+    if '-v' in opts:
+        opts['-h'] = ''
 
         
     return (opts, args)
@@ -133,22 +141,36 @@ def getOpts():
 def main(): 
     opts, args = getOpts()
     print(f"Analyzing File: {args[0]}".center(80, '-'))
+    sha1 = hashlib.sha1()
+    sha256 = hashlib.sha256()
+    md5 = hashlib.md5()
+    hashes = None
     
-    SHA1sum = None
-    if '-h' in opts:
-        try:
-            SHA1 = subprocess.run(f"sha1sum {args[0]}", shell=True, capture_output=True)
-            SHA1sum = SHA1.stdout.strip().decode("utf-8").split()[0]
-            
-        except Exception as e:
-            print(e)
-
     try:
-        stringsCall = subprocess.run(f"strings {args[0]}", shell=1, capture_output=1)
-    except:
-        print(stringsCall.returncode)
+
+        strings = []
+        with open(args[0], 'rb') as f:
+            for line in f:
+                sha1.update(line)
+                sha256.update(line)
+                md5.update(line)
+                string = []
+                for char in line:
+                    if char > 31 and char < 127:
+                            string +=chr(char)
+                    elif string:
+                        if len(string) > 3:
+                            strings.append(''.join(string))
+                        string = []
+                        
+    except Exception as e:
+        print(e)
+        
     else:
         
+        if '-h' in opts:
+            hashes = [md5.hexdigest(), sha1.hexdigest(), sha256.hexdigest()]
+            
         DLL = re.compile(".*\.DLL.*", re.I)
         URL = re.compile("((http|https)\:\/\/)?[a-zA-Z0-9\.\/\?\:@\-_=#]+\.([a-zA-Z]){2,6}([a-zA-Z0-9\.\&\/\?\:@\-_=#])*")
         IP = re.compile(".*(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]).*")
@@ -162,7 +184,7 @@ def main():
         DLLs = []
         PATHs = []
         UNCAT = []
-        strings = stringsCall.stdout.decode("utf-8").split('\n')
+
         for string in strings:
             
             if re.match(PATH,string.strip()) and '-p' in opts:
@@ -181,10 +203,10 @@ def main():
                 UNCAT.append(string)
 
         if '-o' not in opts:
-            stdout(SHA1sum, DLLs, PATHs, IPs, URLs, KEYs, FILEs, UNCAT, opts)
+            stdout(hashes, DLLs, PATHs, IPs, URLs, KEYs, FILEs, UNCAT, opts)
         else:
             print("Saving results to file...")
-            writeFile(SHA1sum, DLLs, PATHs, IPs, URLs, KEYs, FILEs, UNCAT, opts)
+            writeFile(hashes, DLLs, PATHs, IPs, URLs, KEYs, FILEs, UNCAT, opts)
             
                 
 
