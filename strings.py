@@ -7,18 +7,20 @@ def help():
           "\n\nThe default usage is:\n\tstrings.py [options] path_to_file\n\n"
           "Flags can be set to specify certain types of data.\n\nOptions:"
           "\n\t-o filename -- this option specifies a file to write the output to, instead of stdout. Unlike stdout, this option does not add tabs before strings."
+          "\n\t-l length -- sets viable string length"
           "\n\t-u -- parse URLs"
           "\n\t-d -- parse DLLs"
           "\n\t-i -- parse IP Addresses"
           "\n\t-p -- parse File Paths"
           "\n\t-k -- parse Registry Keys"
           "\n\t-f -- parse Files"
+          "\n\t-f -- parse timestamps and dates"
           "\n\t-h -- computes hash values"
           "\n\t-v -- checks the SHA1sum value against VirusTotal's database and prints the report. If -o is selected this information is saved in a second file VirusTotalReport-filename. Automatically sets the -h option."
           )
     sys.exit()
     
-def stdout(hashes, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
+def stdout(hashes, DLLs, PATHs, IPs, URLs, Keys, Files, DATES, UNCAT, opts):
     
     if hashes:
         print(f'\nMD5 Hash:\n\t{hashes[0]}\nSHA1 Hash:\n\t{hashes[1]}\nSHA256 Hash:\n\t{hashes[2]}\n')
@@ -46,6 +48,10 @@ def stdout(hashes, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
     if Files:
         print("\nFiles Found:")
         [print("\t",f) for f in Files]
+        
+    if DATES:
+        print("\nDates Found:")
+        [print("\t",d) for d in DATES]    
     
     yn = input("Would you like to see uncategorized strings? (y/N) ")
     
@@ -56,7 +62,7 @@ def stdout(hashes, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
         print("\nVirusTotal report:\n")
         pprint.pprint(vt.VTreport(hashes[1]))
 
-def writeFile(hashes, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
+def writeFile(hashes, DLLs, PATHs, IPs, URLs, Keys, Files, DATES, UNCAT, opts):
     yn = input("Would you like to write uncategorized strings? (y/N) ")
     try:    
         with open(opts['-o'], 'w') as f:
@@ -93,6 +99,10 @@ def writeFile(hashes, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
                 f.write("\n\nFiles Found:")
                 [f.write("\n" + fi) for fi in Files]
             
+            if DATES:
+                f.write("\n\nDates Found:")
+                [f.write("\n" + d) for d in DATES]
+            
             if 'Y' in yn.upper():
                 f.write("\n\nUncategorized Strings:")
                 [f.write("\n" + u) for u in UNCAT]
@@ -108,7 +118,7 @@ def writeFile(hashes, DLLs, PATHs, IPs, URLs, Keys, Files, UNCAT, opts):
         sys.exit()
        
 def getOpts():
-    opts, args = getopt.getopt(sys.argv[1:], "udipkfhvo:",['help'])
+    opts, args = getopt.getopt(sys.argv[1:], "udipkfhtvo:l:",['help'])
     opts = dict(opts)
     optionsSelected = []
         
@@ -120,7 +130,7 @@ def getOpts():
 
     selectedCount = 0
     for o in optionsSelected:
-        if o in "udipkfh":
+        if o in "udiptkfh":
             selectedCount += 1
             
     if selectedCount == 0:
@@ -131,6 +141,10 @@ def getOpts():
         opts['-k'] = ''
         opts['-f'] = ''
         opts['-h'] = ''
+        opts['-t'] = ''
+        
+    if '-l' not in opts:
+        opts['-l'] = 3
    
     if '-v' in opts:
         opts['-h'] = ''
@@ -159,7 +173,7 @@ def main():
                     if char > 31 and char < 127:
                             string +=chr(char)
                     elif string:
-                        if len(string) > 3:
+                        if len(string) > int(opts['-l']):
                             strings.append(''.join(string))
                         string = []
                         
@@ -172,21 +186,25 @@ def main():
             hashes = [md5.hexdigest(), sha1.hexdigest(), sha256.hexdigest()]
             
         DLL = re.compile(".*\.DLL.*", re.I)
-        URL = re.compile("((http|https)\:\/\/)?[a-zA-Z0-9\.\/\?\:@\-_=#]+\.([a-zA-Z]){2,6}([a-zA-Z0-9\.\&\/\?\:@\-_=#])*")
+        URL = re.compile("((.*http|.*https|http|https)\:\/\/)?[a-zA-Z0-9\.\/\?\:@y\-_=#]+\.([a-zA-Z]){2,6}([a-zA-Z0-9\.\&\/\?\:@\-_=#])*")
         IP = re.compile(".*(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]).*")
         REG = re.compile('.*(HKEY_LOCAL_MACHINE|HKLM|hkey_local_machine)\\\\([a-zA-Z0-9\s_@\-\^!#.\:\/\$%&+={}\[\]\\\\*])+$')
         FILENAMES = re.compile(".*\.(EXE|TXT|JPG|JPEG|GIF|DOC|DOCX|XLS|XLSX|CSV|PPT|PPTX|LNK|PDF|RTF|MP3|MPG|MPEG|MOV|MP4|CPP|PY).*", re.I)
         PATH = re.compile("[A-Z]:\\\\",re.I)
+        DATE = re.compile(".*\d\d(\d+)?[. /-]\d\d[./ -]\d\d(\d+)?")
         IPs = []
         URLs = []
         KEYs = []
         FILEs = []
         DLLs = []
         PATHs = []
+        DATES = []
         UNCAT = []
 
         for string in strings:
             
+            if re.match(DATE, string.strip()) and '-t' in opts:
+                DATES.append(string)
             if re.match(PATH,string.strip()) and '-p' in opts:
                 PATHs.append(string)
             elif re.match(DLL, string.strip()) and '-d' in opts:
@@ -203,10 +221,10 @@ def main():
                 UNCAT.append(string)
 
         if '-o' not in opts:
-            stdout(hashes, DLLs, PATHs, IPs, URLs, KEYs, FILEs, UNCAT, opts)
+            stdout(hashes, DLLs, PATHs, IPs, URLs, KEYs, FILEs, DATES, UNCAT, opts)
         else:
             print("Saving results to file...")
-            writeFile(hashes, DLLs, PATHs, IPs, URLs, KEYs, FILEs, UNCAT, opts)
+            writeFile(hashes, DLLs, PATHs, IPs, URLs, KEYs, FILEs, DATES, UNCAT, opts)
             
                 
 
